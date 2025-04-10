@@ -35,7 +35,7 @@ from arb.api import (
     subscribe_index_prices,
     DeribitAPIError,
 )
-from arb.services import BoxArbitrageScannerWS, ArbitrageExecutor
+from arb.services import BoxArbitrageScannerWS
 from arb.utils import setup_logging # Import logging setup
 
 # Setup logging as early as possible
@@ -159,8 +159,6 @@ async def run_client_connection(client: DeribitAPIClient, stop_event: asyncio.Ev
 async def main_runner():
     """Main asynchronous execution function."""
     global shutdown_requested
-    execution_attempted = False # Flag to control single execution.
-    executed_opportunities = set() # Track attempted boxes
 
     api_client = None
     market_data_fetcher = None
@@ -177,13 +175,6 @@ async def main_runner():
             client_id=settings.CLIENT_ID,
             client_secret=settings.CLIENT_SECRET,
         )
-
-        #logger.info("Connecting and authenticating API client...")
-        #await api_client.connect()
-        #if not api_client.is_authenticated:
-        #    logger.critical("Failed to connect and authenticate the API client. Exiting.")
-        #    return
-        #logger.info("API client connected and authenticated successfully.")
 
         # --- Start Background Data Fetching ---
         logger.info("Starting background data fetching tasks...")
@@ -279,10 +270,7 @@ async def main_runner():
              await asyncio.gather(index_price_task, market_data_task, return_exceptions=True)
              return
 
-        # --- Initialize Executor ---
-        executor = ArbitrageExecutor(api_client, settings.MAX_USD_PER_BOX_TRADE_LEG)
-
-        # --- Main Scan and Execute Loop ---
+        # --- Main Scan Loop ---
         logger.info("Starting main scan loop...")
         while not shutdown_event.is_set():
             cycle_start = time.perf_counter()
@@ -294,12 +282,7 @@ async def main_runner():
                  await asyncio.sleep(settings.RECONNECT_DELAY) # Wait before next cycle check
                  continue
 
-            # Log current mode
-            if settings.EXECUTION_ENABLED and not execution_attempted:
-                logger.info("--- Scan Cycle Start (Execution Mode) ---")
-            else:
-                logger.debug("--- Scan Cycle Start (Observation Mode) ---")
-
+            logger.debug("--- Scan Cycle Start ---")
 
             # Run scanners concurrently
             scan_tasks = [
@@ -327,77 +310,14 @@ async def main_runner():
 
             if all_opps:
                 # Sort by absolute difference magnitude (potential profit/loss)
-                # Format: List[Tuple[float_difference, BoxArbitrage_object]]
                 sorted_opps = sorted(all_opps, key=lambda x: abs(x[0]), reverse=True)
 
-                # --- Execute Top Opportunity (if enabled and not already done) ---
-                if settings.EXECUTION_ENABLED and not execution_attempted:
-                    logger.info(f"Found {len(sorted_opps)} potential opportunities. Checking top one for execution.")
-                    executed_in_cycle = False
-                    for diff, box in sorted_opps:
-                        # Create a unique key for this opportunity instance
-                        opp_key = (box.coin, box.expiry, box.K_low, box.K_high)
+                # Log top opportunities
+                logger.info("--- Top 3 Potential Box Spread Opportunities ---")
+                for diff, box in sorted_opps[:3]:
+                    box.print_details()  # Print full details
 
-                        # Avoid re-attempting the exact same box spread immediately if it failed recently
-                        if opp_key in executed_opportunities:
-                            logger.debug(f"Skipping already processed opportunity key: {opp_key}")
-                            continue
-
-                        logger.info(f"Top opportunity found for execution attempt: {box.coin} {box.expiry} {box.K_low}/{box.K_high}, Diff: {diff:.4f}")
-                        box.print_details() # Log details before attempting
-
-                        # *** EXECUTE THE TRADE ***
-                        try:
-                            execution_result = await executor.execute_box(box)
-                            executed_opportunities.add(opp_key) # Mark as processed
-
-                            if execution_result is not None: # Check if execution was attempted
-                                 logger.info(f"Execution attempt completed for {opp_key}. Result summary logged by executor.")
-                                 # SET THE FLAG TO PREVENT FURTHER EXECUTIONS
-                                 execution_attempted = True
-                                 logger.warning(">>> First execution attempt complete. Disabling further executions. Entering Observation Mode. <<<")
-                                 executed_in_cycle = True
-                                 break # Stop trying other opportunities in this cycle
-                            else:
-                                 # execute_box returned None (e.g., pre-trade check failed)
-                                 logger.warning(f"Execution attempt aborted early for {opp_key} (likely pre-check failure). Considering next opportunity.")
-                                 # Do NOT set execution_attempted = True here
-
-                        except DeribitAPIError as api_err:
-                             logger.error(f"!!! API ERROR during execute_box call for {opp_key}: {api_err}")
-                             executed_opportunities.add(opp_key)
-                             execution_attempted = True # Stop trying after API error
-                             logger.warning(">>> API error during execution attempt. Disabling further executions. Entering Observation Mode. <<<")
-                             executed_in_cycle = True
-                             break
-                        except ConnectionError as conn_err:
-                             logger.error(f"!!! Connection ERROR during execute_box call for {opp_key}: {conn_err}")
-                             logger.warning("Connection error during execution, will retry connection check next cycle.")
-                             # Don't disable execution, but stop attempts this cycle
-                             break
-                        except Exception as e:
-                             logger.exception(f"!!! CRITICAL UNHANDLED ERROR during execute_box call for {opp_key}: {e}")
-                             executed_opportunities.add(opp_key)
-                             execution_attempted = True # Stop trying after critical error
-                             logger.warning(">>> Critical error during execution attempt. Disabling further executions. Entering Observation Mode. <<<")
-                             executed_in_cycle = True
-                             break
-
-                    if not executed_in_cycle and not execution_attempted:
-                         logger.info("No opportunities met execution criteria this cycle. Execution remains enabled.")
-
-                else:
-                    # Log top opportunities without executing
-                    log_level = logging.DEBUG if execution_attempted else logging.INFO
-                    prefix = "Observation Mode" if execution_attempted else "Execution Disabled"
-                    logger.log(log_level, f"--- Top 3 Potential Box Spread Opportunities ({prefix}) ---")
-                    for diff, box in sorted_opps[:3]:
-                         if execution_attempted:
-                              logger.debug(f"Found Opp ({prefix}): {box.coin} {box.expiry} {box.K_low}/{box.K_high} Diff={diff:.4f}")
-                         else:
-                              box.print_details() # Print full details if execution is off
-
-            else: # No opportunities found
+            else:
                 logger.info("No box spread opportunities found in this scan cycle.")
 
             # --- Cycle End ---
@@ -437,13 +357,6 @@ async def main_runner():
 
         for task in tasks_to_cancel:
              task.cancel()
-
-        # --- REMOVED THIS BLOCK ---
-        # if api_client and api_client.is_connected: # is_connected might fail if ws is None
-        #    logger.info("Disconnecting API client...")
-        #    # This is handled by cancelling client_connection_task and async with exit
-        #    # await api_client.disconnect() # REMOVE THIS LINE
-        # --- END REMOVED BLOCK ---
 
         # Wait for all tasks to finish
         logger.info("Waiting for background tasks to complete...")
