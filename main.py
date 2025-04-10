@@ -18,7 +18,6 @@ from dotenv import load_dotenv # <--- IMPORT load_dotenv
 # --- Load environment variables from .env file ---
 # Load .env file located in the project root directory BEFORE importing settings
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env') # Explicitly point to .env in the same dir as main.py
-print(f"Loaded environment variables from: {dotenv_path}") # Optional: confirmation
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
     print(f"Loaded environment variables from: {dotenv_path}") # Optional: confirmation

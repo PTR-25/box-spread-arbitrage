@@ -18,7 +18,7 @@ It connects to Deribit's public WebSocket API to receive real-time market data (
     *   Calculates the net cost/proceeds for both buying (long) and selling (short) the box spread, using current Best Bid/Offer (BBO) data.
     *   Incorporates Deribit's fee structure (taker execution + settlement) for linear options, accounting for contract multipliers.
     *   Identifies potential arbitrage if the difference between market cost/proceeds and theoretical value exceeds a configurable threshold.
-*   **Contract Multiplier Handling:** Correctly accounts for Deribit's contract multipliers (e.g., 10 for SOL, 1000 for XRP) in value and fee calculations.
+*   **Contract Multiplier Handling:** Correctly accounts for Deribit's contract multipliers (e.g., 10 for SOL, 1000 for XRP) in value and fee calculations. Even though the UI of Deribit shows the per coin price, the actual value is multiplied by the contract multiplier. For example, if on the UI it is shown that one SOL-{maturity}-{strike}-{C/P} costs 5.65 USD, since it is the per coin value, it actually costs 5.65 * {sol_contract_multiplier} = 5.65 * 10 = 56.5 USD.
 *   **Asynchronous Architecture:** Built using Python's `asyncio` for efficient handling of concurrent network I/O and tasks.
 *   **Modular Design:** Code is structured into logical packages (api, models, services, utils, config) for readability and maintainability.
 *   **Configuration:** Key parameters (API URLs, assets to scan, threshold, etc.) are configurable via environment variables or a `.env` file.
@@ -27,11 +27,11 @@ It connects to Deribit's public WebSocket API to receive real-time market data (
 ## Project Structure
 
 ```
-arb/
+box-spread-arbitrage/
 ├── config/                 # Configuration files
 │   ├── __init__.py
 │   └── settings.py         # Loads settings & API keys from environment variables
-├── deribit_arb/            # Main application package
+├── arb/            # Main application package
 │   ├── __init__.py
 │   ├── api/                # Modules for interacting with Deribit API
 │   │   ├── __init__.py
@@ -44,7 +44,6 @@ arb/
 │   │   └── arbitrage.py
 │   ├── services/           # Core logic (scanning, execution)
 │   │   ├── __init__.py
-│   │   ├── executor.py       # Trade execution logic
 │   │   └── scanner.py        # Opportunity scanning logic
 │   └── utils/              # Utility modules
 │       ├── __init__.py
@@ -53,8 +52,7 @@ arb/
 │       └── logging_config.py # Logging setup
 ├── main.py                 # Main application entry point
 ├── requirements.txt        # Python dependencies
-├── README.md               # This file
-└── linear_options_arbitrage.py # Original file, not used in this version.
+└── README.md               # This file
 ```
 ## Technical Details & Considerations
 
