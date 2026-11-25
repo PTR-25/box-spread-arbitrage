@@ -1,0 +1,60 @@
+# box-spread-arbitrage configuration
+# Run live scanner:  box-spread-arbitrage live --config config.example.toml
+# Run Parquet replay: box-spread-arbitrage replay ./data --config config.example.toml
+
+[scanner]
+# Markets to scan (supports both inverse BTC/ETH and linear *_USDC markets, or ["ALL"])
+markets = ["BTC", "ETH", "BTC_USDC", "ETH_USDC", "SOL_USDC", "XRP_USDC"]
+
+# Order book granularity in live mode: "raw" (tick-by-tick), "100ms", "agg2"
+book_interval = "raw"
+
+# Enabled static no-arbitrage strategies
+enable_box_spreads = true
+enable_parity = true          # Conversions & reversals vs. live dated futures
+enable_verticals = true       # Call/put monotonicity & payoff-cap violations
+enable_butterflies = true     # Call/put convexity (risk-neutral density >= 0)
+
+# Minimum net post-fee total profit (in USD/USDC across swept L2 depth) to emit an opportunity
+min_profit_usd = 0.25
+# Minimum net edge per underlying unit in basis points of spot index (filters dust)
+min_edge_bps = 0.5
+# Minimum time to expiry in minutes (avoids last-minute expiry settlement pin noise)
+min_tte_minutes = 15.0
+# Optional maximum days to expiry (0 = unlimited)
+max_dte_days = 0
+# Maximum allowed cross-leg quote staleness in milliseconds (0 = disabled)
+max_quote_age_ms = 60000
+# Maximum strike step span for box spreads & verticals (0 = all pairs, e.g. 8 caps O(N^2) work)
+max_strike_span = 0
+# Maximum discrete units to sweep per opportunity (0 = unlimited full L2 book)
+max_sweep_notional_usd = 0.0
+
+[rates]
+# Benchmark annual USDC financing rate used to discount linear cash flows.
+# Default is 0.0 to match Deribit's zero-interest margin mechanics (pure static no-arbitrage,
+# where short-option mark liabilities lock proceeds in margin equity). Set > 0 (e.g. 0.04) only
+# when explicitly modeling financing-carry strategies with yield-bearing collateral.
+usdc_benchmark_rate = 0.0
+# Benchmark annual coin (BTC/ETH) lending rate used to discount inverse coin-settled payoffs.
+coin_benchmark_rate = 0.0
+
+[fees]
+# Include expiry delivery fees on ITM legs (2 ITM legs for boxes/butterflies, 1 for parity/verticals)
+hold_to_expiry = true
+# Fallback rates when instrument metadata has 0 (live Deribit specs are read automatically)
+default_option_taker_rate = 0.0003
+default_future_taker_rate = 0.00035
+# Option delivery fee rate (1.5 bps of index on ITM legs only)
+option_delivery_rate = 0.00015
+# Deribit option fee cap as fraction of option premium (12.5%)
+option_fee_cap_rate = 0.125
+# Optional explicit override for testing custom VIP/MM fee tiers
+# option_taker_override = 0.0002
+# future_taker_override = 0.0002
+
+[replay]
+# Synthetic execution latency horizons (ms) evaluated for every detected opportunity episode
+latency_horizons_ms = [5, 20, 50, 150]
+# Optional JSONL output file for all detected opportunity episodes
+# episodes_output = "./reports/episodes.jsonl"

@@ -1,0 +1,38 @@
+[package]
+name = "box-spread-arbitrage"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Event-driven Rust static options arbitrage scanner and tick-by-tick Parquet backtester for Deribit inverse and linear USDC options (box spreads, conversions/reversals, verticals, butterflies, and implied financing rates)"
+license = "MIT"
+repository = "https://github.com/PTR-25/box-spread-arbitrage"
+keywords = ["deribit", "options", "arbitrage", "box-spread", "quantitative-finance"]
+categories = ["finance", "command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0"
+arrow-array = "60.2"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.6", features = ["derive", "env"] }
+deribit-tick-collector = { git = "https://github.com/PTR-25/deribit-tick-collector", tag = "v0.1.0", default-features = false }
+dotenvy = "0.15"
+parquet = { version = "60.2", default-features = false, features = ["arrow", "zstd", "snap", "simdutf8"] }
+rustc-hash = "2.1"
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+smallvec = "1.15"
+tokio = { version = "1.54", features = ["full"] }
+toml = "1.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
